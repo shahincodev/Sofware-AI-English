@@ -1,6 +1,3 @@
-# SPDX-License-Identifier: NOASSERTION
-# Copyright (c) 2025 TahaNili (Shahin)
-
 """ابزار کمکی برای ایجاد یک شیء Browser با تنظیمات پیش‌فرض قابل تنظیم.
 
 اینجا می‌توانیم تنظیمات مرتبط با مرورگر را از متغیرهای محیطی بخوانیم تا
