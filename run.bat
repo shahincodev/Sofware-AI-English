@@ -32,6 +32,11 @@ if not exist "%~dp0.env" (
     )
 )
 
+REM --- ایجاد دایرکتوری‌های مورد نیاز ---
+if not exist "%~dp0data" mkdir "%~dp0data"
+if not exist "%~dp0data\logs" mkdir "%~dp0data\logs"
+if not exist "%~dp0data\logs\cache" mkdir "%~dp0data\logs\cache"
+
 REM --- برنامه را اجرا کنید، آرگومان‌ها را ارسال کنید ---
 echo Launching application...
 python "%~dp0main.py" %*

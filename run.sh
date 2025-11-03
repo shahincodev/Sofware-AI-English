@@ -41,5 +41,8 @@ if [ ! -f ".env" ]; then
   fi
 fi
 
+# ایجاد دایرکتوری‌های مورد نیاز
+mkdir -p "$SCRIPT_DIR/data/logs/cache"
+
 # Run the application (forward arguments)
 exec python main.py "$@"
