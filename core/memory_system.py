@@ -1,5 +1,5 @@
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 tahanilishahin
+# SPDX-License-Identifier: NOASSERTION
+# Copyright (c) 2025 TahaNili (Shahin)
 
 """
 ماژول سیستم حافظه: پشتیبانی از حافظهٔ کوتاه‌مدت (درون‌فرایندی با TTL)

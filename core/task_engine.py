@@ -1,5 +1,5 @@
-# SPDX-License-Identifier: MIT
-# Copyright (c) 2025 tahanilishahin
+# SPDX-License-Identifier: NOASSERTION
+# Copyright (c) 2025 TahaNili (Shahin)
 
 """Engine ساده برای صف‌بندی و اجرای همزمان تسک‌ها.
 
