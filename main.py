@@ -75,7 +75,7 @@ def parse_arguments() -> argparse.Namespace:
 
     return parser.parse_args()
 
-def print_banner(text="Sofware-AI", font="standard", color=Fore.CYAN) -> None:
+def print_banner(text="Sofware-AI", font="slant", color=Fore.RED) -> None:
     """چاپ بنر خوش‌آمدگویی در CLI."""
     f = Figlet(font=font)
     banner = f.renderText(text)
@@ -87,7 +87,7 @@ def print_banner(text="Sofware-AI", font="standard", color=Fore.CYAN) -> None:
 
 async def process_user_input(task_engine: TaskEngine, memory: MemoryManager, mode: str) -> None:
     """پردازش ورودی کاربر در یک حلقه تعاملی."""
-    print_banner("Sofware-AI", font="standard", color=Fore.MAGENTA)
+    print_banner("Sofware-AI", font="slant", color=Fore.RED)
     print("\n Be Systeme Narm Afzarie Hooshe Masnoee Sofware-AI Khosh Amadid !")
     print("Task haaye khod ra vared konid (har task dar yek khat). Baraye khorooj az Ctrl+C estefade konid.\n")
 
