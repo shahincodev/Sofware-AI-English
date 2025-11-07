@@ -24,7 +24,7 @@ source .venv/bin/activate
 
 echo "Using Python: $(which python)"
 
-# Upgrade pip and install requirements if present
+# ارتقاء پیپ و نصب ملزومات در صورت وجود
 python -m pip install --upgrade pip
 if [ -f "requirements.txt" ]; then
   echo "Installing requirements from requirements.txt..."
@@ -44,5 +44,5 @@ fi
 # ایجاد دایرکتوری‌های مورد نیاز
 mkdir -p "$SCRIPT_DIR/data/logs/cache"
 
-# Run the application (forward arguments)
+# اجرای برنامه (آرگومان‌های ارسالی)
 exec python main.py "$@"

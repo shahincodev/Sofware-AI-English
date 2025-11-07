@@ -198,8 +198,8 @@ python main.py --mode code --concurrency 5
 - مالک حق نشر: TahaNili (Shahin)
 - سال: 2025
 - ارتباط:
-  - GitHub: https://github.com/tahanilishahin
-  - Email: tahanilishahin@gmail.com
+  - GitHub: https://github.com/shahincodev
+  - Email: shahincodev@gmail.com
 
 بدون اجازهٔ کتبی صریح از مالک، هیچ‌یک از موارد زیر مجاز نیست:
 - کپی، توزیع، انتشار، یا نمایش برنامه
