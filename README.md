@@ -196,11 +196,11 @@ This project is published exclusively and all rights are reserved to the project
 
 Copyright Information and Contact:
 
-- Copyright Owner: TahaNili (Shahin)
+- Copyright Owner: Shahin
 - Year: 2025
 - Contact:
-  - GitHub: https://github.com/tahanilishahin
-  - Email: tahanilishahin@gmail.com
+  - GitHub: https://github.com/shahincodev
+  - Email: shahincodev@gmail.com
 
 Without explicit written permission from the owner, none of the following is allowed:
 - Copying, distributing, publishing, or displaying the program

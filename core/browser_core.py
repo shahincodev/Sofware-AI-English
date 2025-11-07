@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: NOASSERTION
+# Copyright (c) 2025 TahaNili Shahin
+
 """Helper tool for creating a Browser object with configurable default settings.
 
 Here we can read browser-related settings from environment variables to

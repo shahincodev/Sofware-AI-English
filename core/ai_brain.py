@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: NOASSERTION
-# Copyright (c) 2025 TahaNili (Shahin)
+# Copyright (c) 2025 TahaNili Shahin
 
 """Simple layer for selecting LLM models.
 

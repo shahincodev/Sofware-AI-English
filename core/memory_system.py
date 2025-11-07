@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: NOASSERTION
-# Copyright (c) 2025 TahaNili (Shahin)
+# Copyright (c) 2025 Shahin
 
 """
 Memory System Module: Support for short-term memory (in-process with TTL)

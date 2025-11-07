@@ -1,6 +1,6 @@
 @echo off
 ::
-:: Sofware-AI - اسکریپت اجرا برای ویندوز (CMD)
+:: Sofware-AI - Run Script for Windows (CMD)
 :: This script creates a virtualenv named .venv, installs dependencies,
 :: creates it from .env.example if it doesn't exist, and then runs the main program.
 
