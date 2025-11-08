@@ -200,7 +200,7 @@ async def main() -> None:
         await process_user_input(task_engine, memory, args.mode)
         
     except Exception as e:
-        logger.exception("Khataaye mohalek rokh daad")
+        logger.exception(f"An unexpected error occurred: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":
