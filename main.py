@@ -77,7 +77,7 @@ def parse_arguments() -> argparse.Namespace:
 
     return parser.parse_args()
 
-def print_banner(text=banner, color=Fore.WHITE) -> None:
+def print_banner(text=banner, color=Fore.CYAN) -> None:
     """Printing a welcome banner in the CLI."""
     term_width = shutil.get_terminal_size((80, 20)).columns
     
@@ -97,7 +97,7 @@ def print_banner(text=banner, color=Fore.WHITE) -> None:
 
 async def process_user_input(task_engine: TaskEngine, memory: MemoryManager, mode: str) -> None:
     """Processing user input in an interactive loop."""
-    print_banner(banner, color=Fore.WHITE)
+    print_banner(banner, color=Fore.CYAN)
     print("\n Welcome to the Software-AI System!")
     print("Please enter your tasks (one task per line). Use Ctrl+C to exit.\n")
 
