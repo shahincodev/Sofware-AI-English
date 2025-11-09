@@ -6,7 +6,9 @@ pyfiglet>=1.0.4
 
 # Voice support (optional)
 SpeechRecognition>=3.10.0
-pyttsx3>=2.90
+google-cloud-texttospeech>=2.14.0
+sounddevice>=0.4.6
+soundfile>=0.12.1
 pyaudio>=0.2.13; platform_system == "Windows"  # for Windows
 # For non-Windows systems, install pyaudio using system package manager
 

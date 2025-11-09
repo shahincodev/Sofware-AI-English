@@ -6,13 +6,16 @@
 این ماژول مسئول تبدیل گفتار به متن و متن به گفتار است.
 """
 
+import os
 import queue
 import threading
 import logging
+import tempfile
 from typing import Optional, Callable, Any, cast
 import speech_recognition as sr
-import pyttsx3
-import collections.abc
+from google.cloud import texttospeech
+import sounddevice as sd
+import soundfile as sf
 
 logger = logging.getLogger(__name__)
 
@@ -87,65 +90,73 @@ class VoiceInput:
         self.is_listening = False
 
 class VoiceOutput:
-    """کلاس مدیریت خروجی صوتی (تبدیل متن به گفتار)"""
+    """کلاس مدیریت خروجی صوتی (تبدیل متن به گفتار با Google Cloud)"""
     def __init__(self) -> None:
         """مقداردهی اولیه موتور تبدیل متن به گفتار"""
-        self.engine = pyttsx3.init()
-        self._setup_engine()
+        self.client = texttospeech.TextToSpeechClient()
+        self.voice = texttospeech.VoiceSelectionParams(
+            language_code="fa-IR",
+            name="fa-IR-Standard-A"
+        )
+        self.audio_config = texttospeech.AudioConfig(
+            audio_encoding=texttospeech.AudioEncoding.LINEAR16,
+            speaking_rate=1.0,
+            pitch=0.0,
+            volume_gain_db=0.0
+        )
         self.speaking_queue = queue.Queue()
         self.is_speaking = False
+        self.temp_dir = tempfile.mkdtemp()
         self._start_speaker_thread()
 
-    def _setup_engine(self) -> None:
-        """تنظیم پارامترهای موتور تبدیل متن به گفتار"""
-        # تنظیم سرعت (کلمات در دقیقه)
-        self.engine.setProperty('rate', 150)
-        # تنظیم بلندی صدا (0 تا 1)
-        self.engine.setProperty('volume', 0.9)
+    def _synthesize_speech(self, text: str) -> bytes:
+        """تبدیل متن به صدا با استفاده از Google Cloud TTS
+        
+        Args:
+            text: متن برای تبدیل به گفتار
+            
+        Returns:
+            داده‌های صوتی به صورت bytes
+        """
+        synthesis_input = texttospeech.SynthesisInput(text=text)
+        response = self.client.synthesize_speech(
+            input=synthesis_input,
+            voice=self.voice,
+            audio_config=self.audio_config
+        )
+        return response.audio_content
 
-        # انتخاب صدای فارسی اگر موجود باشد
-        voices = self.engine.getProperty('voices')
-        # اطمینان حاصل کنید که صداها قابل تکرار هستند - برخی از backendها ممکن است یک شیء غیرقابل تکرار را برگردانند
-        if isinstance(voices, collections.abc.Iterable):
-            iterable_voices = list(voices)
-        else:
-            # تلاش برای شکل‌های رایج جایگزین، در غیر این صورت استفاده از لیست خالی
-            fallback = getattr(voices, 'voices', None) or getattr(voices, '_voices', None) or []
-            if isinstance(fallback, collections.abc.Iterable):
-                iterable_voices = list(fallback)
-            else:
-                iterable_voices = []
-
-        for voice in iterable_voices:
-            try:
-                langs = []
-                if hasattr(voice, 'languages'):
-                    langs = voice.languages
-                elif hasattr(voice, 'id') and isinstance(voice.id, str):
-                    langs = [voice.id]
-                name = getattr(voice, 'name', '') or ''
-                if any('fa' in str(l).lower() for l in langs) or 'persian' in name.lower():
-                    self.engine.setProperty('voice', voice.id)
-                    break
-            except Exception:
-                # از اشیاء صوتی که ویژگی‌های مورد انتظار را ندارند، صرف نظر کنید
-                continue
+    def _play_audio(self, audio_content: bytes) -> None:
+        """پخش صدا با استفاده از sounddevice
+        
+        Args:
+            audio_content: داده‌های صوتی به صورت bytes
+        """
+        temp_file = os.path.join(self.temp_dir, "temp_speech.wav")
+        with open(temp_file, "wb") as f:
+            f.write(audio_content)
+        
+        data, samplerate = sf.read(temp_file)
+        sd.play(data, samplerate)
+        sd.wait()
+        os.remove(temp_file)
     def _start_speaker_thread(self) -> None:
         """راه‌اندازی thread مدیریت صف گفتار"""
         def speaker_thread():
             while True:
                 try:
                     text = self.speaking_queue.get()
-                    if text is None: # سیگنال توقف
+                    if text is None:  # سیگنال توقف
                         break
                     self.is_speaking = True
-                    self.engine.say(text)
-                    self.engine.runAndWait()
+                    audio_content = self._synthesize_speech(text)
+                    self._play_audio(audio_content)
                 except Exception as e:
                     logger.error(f"khata dar pokhsh goftar: {str(e)}")
                 finally:
                     self.is_speaking = False
                     self.speaking_queue.task_done()
+        
         self.speaker_thread = threading.Thread(target=speaker_thread, daemon=True)
         self.speaker_thread.start()
 
@@ -165,19 +176,16 @@ class VoiceOutput:
 
     def stop_speaking(self) -> None:
         """توقف فوری گفتار فعلی و پاک‌سازی صف"""
-        try:
-            self.engine.stop()
-            with self.speaking_queue.mutex:
-                self.speaking_queue.queue.clear()
-        except Exception as e:
-            logger.error(f"Khataye dar tavaghof goftar: {str(e)}")
+        with self.speaking_queue.mutex:
+            self.speaking_queue.queue.clear()
 
     def shutdown(self) -> None:
         """خاموش کردن موتور تبدیل متن به گفتار"""
         try:
             self.speaking_queue.put(None)  # ارسال سیگنال توقف
             self.speaker_thread.join()
-            self.engine.stop()
+            if os.path.exists(self.temp_dir):
+                os.rmdir(self.temp_dir)
         except Exception as e:
             logger.error(f"Khataye dar khamosh shodan motor: {str(e)}")
 
