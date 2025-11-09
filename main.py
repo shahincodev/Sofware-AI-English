@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: NOASSERTION
-# Copyright (c) 2025 Shahin
+# Copyright (c) 2025 TahaNili (Shahin)
 
 """
-The main entry point of the AI ​​software system.
-This module provides a command line interface (CLI) for the main system capabilities.
+Main entry point for the Sofware-AI system.
+This module provides a command-line interface (CLI) to interact with the core capabilities.
 """
 
 from __future__ import annotations
@@ -19,16 +19,18 @@ from typing import Optional
 from pyfiglet import Figlet
 from colorama import init as colorama_init, Fore, Style
 
+
 from core.agent_core import create_agent
 from core.memory_system import MemoryManager
 from core.task_engine import TaskEngine
+from core.voice_io import VoiceManager
 from dotenv import load_dotenv
 
-colorama_init(autoreset=True) # Enable ANSI management on Windows
+colorama_init(autoreset=True) # enable ANSI handling on Windows
 with open('banner.txt', 'r', encoding='utf-8') as file:
     banner = file.read()
 
-# Configure logging system
+# Logging configuration
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -40,18 +42,18 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 def setup_environment() -> None:
-    """Initialize environment variables and create required folders."""
+    """Initialize environment variables and create required directories."""
     # Load environment variables from .env file
     load_dotenv()
     
-    # Ensure that the required folders exist
+    # Ensure required directories exist
     for dir_path in ["data/logs", "data/logs/cache"]:
         Path(dir_path).mkdir(parents=True, exist_ok=True)
 
 def parse_arguments() -> argparse.Namespace:
-    """Parsing command-line arguments."""
+    """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="Artificial Intelligence Software System - Intelligent Task Processing",
+        description="Sofware-AI — intelligent task processing system",
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
     
@@ -66,26 +68,32 @@ def parse_arguments() -> argparse.Namespace:
         "--concurrency",
         type=int,
         default=3,
-        help="Number of concurrent tasks that can be run (default: 3)"
+        help="Number of concurrent tasks to run (default: 3)"
     )
     
     parser.add_argument(
         "--debug",
         action="store_true",
-        help="Enable debug logs"
+        help="Enable debug logging"
+    )
+    parser.add_argument(
+    "--input-mode",
+    choices=["text", "voice"],
+    default="text",
+    help="Select input type: 'text' for keyboard, 'voice' for microphone"
     )
 
     return parser.parse_args()
 
 def print_banner(text=banner, color=Fore.CYAN) -> None:
-    """Printing a welcome banner in the CLI."""
+    """Print welcome banner in the CLI."""
     term_width = shutil.get_terminal_size((80, 20)).columns
     
     try:
-        # If the text is already ASCII art, we display it directly
+        # If the input text is already ASCII art, print it directly
         lines = str(text).splitlines()
         for line in lines:
-            # Calculate the distance required to center the text
+            # compute padding needed to center the text
             padding = (term_width - len(line)) // 2
             if padding > 0:
                 print(color + " " * padding + line + Style.RESET_ALL)
@@ -95,62 +103,88 @@ def print_banner(text=banner, color=Fore.CYAN) -> None:
         logger.error(f"Error displaying banner: {str(e)}")
         print(color + str(text) + Style.RESET_ALL)
 
-async def process_user_input(task_engine: TaskEngine, memory: MemoryManager, mode: str) -> None:
-    """Processing user input in an interactive loop."""
+async def process_user_input(task_engine: TaskEngine, memory: MemoryManager, mode: str, input_mode: str, voice: VoiceManager) -> None:
+    """Process user input in an interactive loop."""
+
     print_banner(banner, color=Fore.CYAN)
-    print("\n Welcome to the Software-AI System!")
-    print("Please enter your tasks (one task per line). Use Ctrl+C to exit.\n")
+    # voice greeting if voice input selected
+    if input_mode == "voice":
+        voice.speak("Hello! Welcome to the AI system.", block=True)
+    print("\nWelcome to Sofware-AI — Intelligent Task Processor!\n")
+    print("Enter your tasks (one task per line). Use Ctrl+C to exit.\n")
 
     try:
-        # Outer loop: allows multiple rounds of adding + executing tasks
+        # outer loop: allows multiple rounds of adding + executing tasks
         while True:
-            # Inner loop: receives one or more tasks from the user
+            # inner loop: collect one or more tasks from the user
             while True:
                 try:
-                    user_input = input("New Task > ").strip()
 
-                    if not user_input:
-                        continue
+                    if input_mode == "voice":
+                        user_input = voice.listen(timeout=7)
+                        if not user_input:
+                            print("No voice input detected, please try again.")
+                            continue
+                    else:
+                        user_input = input("New task > ").strip()
+                        if not user_input:
+                            continue
 
-                    # Save the task in short-term memory
+                    # store task in short-term memory
                     memory.remember_short(
                         content=user_input,
                         ttl=3600,  # 1 hour TTL
                         metadata={"type": "user_task", "mode": mode}
                     )
 
-                    # Add task to processing engine
+                    # add task to processing engine
                     task_engine.add_task(user_input, mode=mode)
                     print(f"Task added: {user_input}")
 
-                    # Ask to add more tasks or start execution
-                    choice = input("\n What other tasks are you doing? (y/N) ").strip().lower()
-                    if choice == 'y':
-                        # keep collecting
-                        continue
+                    # ask whether to add more tasks or start execution
+
+                    if input_mode == "voice":
+                        voice.speak("Do you have another task? Say 'yes' to add another, or stay silent to continue.")
+                        choice = voice.listen(timeout=5)
+                        if choice and ("yes" in choice.lower()):
+                            continue
+                        else:
+                            break
                     else:
-                        break
+                        choice = input("\nAdd another task? (y/N) ").strip().lower()
+                        if choice == 'y':
+                            continue
+                        else:
+                            break
 
                 except EOFError:
                     break
 
-            # If no tasks have been added in this round, ask whether to continue or exit
+            # If no task was added in this round, ask whether to continue or exit
+
             if not task_engine.queue:
-                cont = input("\n No tasks have been added. Do you want to continue? (Y/N) ").strip().lower()
-                if cont == 'n':
-                    break
+                if input_mode == "voice":
+                    voice.speak("No tasks were added. Do you want to continue? Say 'no' to exit.")
+                    cont = voice.listen(timeout=5)
+                    if cont and ("no" in cont.lower()):
+                        break
+                    else:
+                        continue
                 else:
-                    # Return to task collection
-                    continue
+                    cont = input("\nNo tasks were added. Do you want to continue? (Y/n) ").strip().lower()
+                    if cont == 'n':
+                        break
+                    else:
+                        continue
 
             # Execute all collected tasks
-            print("\n Executing tasks...")
+            print("\nExecuting collected tasks...")
 
-            # Snapshots tasks before execution, as run_all does not clear the queue
+            # Snapshot the tasks before execution because run_all does not clear the queue
             tasks_list = list(task_engine.queue)
             results = await task_engine.run_all()
 
-            # Save results in long-term memory
+            # Store results in long-term memory
             for (task_text, task_mode), result in zip(tasks_list, results):
                 if result:
                     memory.remember_long(
@@ -163,44 +197,56 @@ async def process_user_input(task_engine: TaskEngine, memory: MemoryManager, mod
                     )
                     print(f"\nTask result: {result}\n")
                 else:
-                    print(f"\nThe task failed or had no results.\n")
+                    print(f"\nTask failed or produced no result.\n")
 
-            # Clear the engine's queue to start fresh for the next round
+            # Clear the engine queue to start the next round fresh
             task_engine.queue.clear()
 
-            # Ask if the user wants to add or run more tasks
-            cont = input("\n Do you want to add or perform more tasks? (Y/N)").strip().lower()
-            if cont == 'n':
-                break
-            # Otherwise, continue the outer loop to collect more tasks
-            continue
+            # Ask whether the user wants to add more tasks or finish
+
+            # Ask whether the user wants to add more tasks or finish
+            if input_mode == "voice":
+                voice.speak("Would you like to add more tasks or continue? Say 'no' to finish.")
+                cont = voice.listen(timeout=5)
+                if cont and ("no" in cont.lower()):
+                    break
+                else:
+                    continue
+            else:
+                cont = input("\nWould you like to add more tasks or continue? (Y/n) ").strip().lower()
+                if cont == 'n':
+                    break
+                else:
+                    continue
 
     except KeyboardInterrupt:
-        print("\nShutting down the software...")
+        print("\nShutting down application...")
     finally:
         memory.shutdown()
+        voice.shutdown()
 
 async def main() -> None:
-    """The main entry point of the application."""
+    """Main program entry point."""
     try:
-        # Parse command line arguments
+    # Parse command line arguments
         args = parse_arguments()
 
-        # Setting up the environment
+    # Setup environment
         setup_environment()
-        
+
         if args.debug:
             logging.getLogger().setLevel(logging.DEBUG)
-            
-        # Launching the main components
+
+    # Initialize core components
         task_engine = TaskEngine(concurrency=args.concurrency)
         memory = MemoryManager()
-        
-        # Process user input and execute tasks
-        await process_user_input(task_engine, memory, args.mode)
-        
+        voice = VoiceManager()
+
+    # Process user input and execute tasks
+        await process_user_input(task_engine, memory, args.mode, args.input_mode, voice)
+
     except Exception as e:
-        logger.exception(f"An unexpected error occurred: {e}")
+        logger.exception("Unhandled fatal error occurred")
         sys.exit(1)
 
 if __name__ == "__main__":
