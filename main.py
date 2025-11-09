@@ -19,9 +19,11 @@ from typing import Optional
 from pyfiglet import Figlet
 from colorama import init as colorama_init, Fore, Style
 
+
 from core.agent_core import create_agent
 from core.memory_system import MemoryManager
 from core.task_engine import TaskEngine
+from core.voice_io import VoiceManager
 from dotenv import load_dotenv
 
 colorama_init(autoreset=True) # در ویندوز، فعال کردن مدیریت ANSI
@@ -74,6 +76,12 @@ def parse_arguments() -> argparse.Namespace:
         action="store_true",
         help="فعال‌سازی لاگ‌های دیباگ"
     )
+    parser.add_argument(
+    "--input-mode",
+    choices=["text", "voice"],
+    default="text",
+    help="انتخاب نوع ورودی: 'text' برای کیبورد، 'voice' برای میکروفون"
+    )
 
     return parser.parse_args()
 
@@ -95,9 +103,13 @@ def print_banner(text=banner, color=Fore.CYAN) -> None:
         logger.error(f"Khata dar Namayeshe Banner: {str(e)}")
         print(color + str(text) + Style.RESET_ALL)
 
-async def process_user_input(task_engine: TaskEngine, memory: MemoryManager, mode: str) -> None:
+async def process_user_input(task_engine: TaskEngine, memory: MemoryManager, mode: str, input_mode: str, voice: VoiceManager) -> None:
     """پردازش ورودی کاربر در یک حلقه تعاملی."""
+
     print_banner(banner, color=Fore.CYAN)
+    # خوش‌آمدگویی صوتی اگر حالت voice انتخاب شده باشد
+    if input_mode == "voice":
+        voice.speak("سلام! به سامانه هوش مصنوعی خوش آمدید.", block=True)
     print("\n Be Systeme Narm Afzarie Hooshe Masnoee Sofware-AI Khosh Amadid !")
     print("Task haaye khod ra vared konid (har task dar yek khat). Baraye khorooj az Ctrl+C estefade konid.\n")
 
@@ -107,10 +119,16 @@ async def process_user_input(task_engine: TaskEngine, memory: MemoryManager, mod
             # حلقه داخلی: یک یا چند وظیفه را از کاربر دریافت می‌کند
             while True:
                 try:
-                    user_input = input("Taske Jadid > ").strip()
 
-                    if not user_input:
-                        continue
+                    if input_mode == "voice":
+                        user_input = voice.listen(timeout=7)
+                        if not user_input:
+                            print("ورودی صوتی دریافت نشد، لطفاً دوباره تلاش کنید.")
+                            continue
+                    else:
+                        user_input = input("Taske Jadid > ").strip()
+                        if not user_input:
+                            continue
 
                     # ذخیره تسک در حافظه کوتاه‌مدت
                     memory.remember_short(
@@ -124,24 +142,40 @@ async def process_user_input(task_engine: TaskEngine, memory: MemoryManager, mod
                     print(f"Task ezafe shod: {user_input}")
 
                     # پرسش برای افزودن تسک بیشتر یا شروع اجرا
-                    choice = input("\n Aya task digari darid? (y/N) ").strip().lower()
-                    if choice == 'y':
-                        # keep collecting
-                        continue
+
+                    if input_mode == "voice":
+                        voice.speak("آیا تسک دیگری دارید؟ برای افزودن تسک جدید بگویید بله یا برای ادامه سکوت کنید.")
+                        choice = voice.listen(timeout=5)
+                        if choice and ("بله" in choice or "yes" in choice.lower()):
+                            continue
+                        else:
+                            break
                     else:
-                        break
+                        choice = input("\n Aya task digari darid? (y/N) ").strip().lower()
+                        if choice == 'y':
+                            continue
+                        else:
+                            break
 
                 except EOFError:
                     break
 
             # اگر در این دور هیچ وظیفه‌ای اضافه نشده است، بپرسید که آیا ادامه دهید یا خارج شوید
+
             if not task_engine.queue:
-                cont = input("\n Hich taski ezafe nashode ast. Aya mikhahid edame dahid? (Y/n) ").strip().lower()
-                if cont == 'n':
-                    break
+                if input_mode == "voice":
+                    voice.speak("هیچ تسکی اضافه نشده است. آیا می‌خواهید ادامه دهید؟ اگر نه بگویید نه.")
+                    cont = voice.listen(timeout=5)
+                    if cont and ("نه" in cont or "no" in cont.lower()):
+                        break
+                    else:
+                        continue
                 else:
-                    # بازگشت به جمع‌آوری وظایف
-                    continue
+                    cont = input("\n Hich taski ezafe nashode ast. Aya mikhahid edame dahid? (Y/n) ").strip().lower()
+                    if cont == 'n':
+                        break
+                    else:
+                        continue
 
             # اجرای تمام تسک‌های جمع‌آوری شده
             print("\n Dar hal ejraaye task-ha...")
@@ -169,36 +203,47 @@ async def process_user_input(task_engine: TaskEngine, memory: MemoryManager, mod
             task_engine.queue.clear()
 
             # بپرسید که آیا کاربر می‌خواهد وظایف بیشتری اضافه کند یا اجرا کند
-            cont = input("\n Aya mikhahid task haye bishtari ezafe konid ya anjam dahid? (Y/n) ").strip().lower()
-            if cont == 'n':
-                break
-            # در غیر این صورت، حلقه بیرونی را برای جمع‌آوری وظایف بیشتر ادامه دهید
-            continue
+
+            if input_mode == "voice":
+                voice.speak("آیا می‌خواهید تسک‌های بیشتری اضافه کنید یا اجرا کنید؟ اگر نه بگویید نه.")
+                cont = voice.listen(timeout=5)
+                if cont and ("نه" in cont or "no" in cont.lower()):
+                    break
+                else:
+                    continue
+            else:
+                cont = input("\n Aya mikhahid task haye bishtari ezafe konid ya anjam dahid? (Y/n) ").strip().lower()
+                if cont == 'n':
+                    break
+                else:
+                    continue
 
     except KeyboardInterrupt:
         print("\nDar hal khamosh shodan narm-afzar...")
     finally:
         memory.shutdown()
+        voice.shutdown()
 
 async def main() -> None:
     """نقطه ورود اصلی برنامه."""
     try:
         # تجزیه آرگومان‌های خط فرمان
         args = parse_arguments()
-        
+
         # راه‌اندازی محیط
         setup_environment()
-        
+
         if args.debug:
             logging.getLogger().setLevel(logging.DEBUG)
-            
+
         # راه‌اندازی اجزای اصلی
         task_engine = TaskEngine(concurrency=args.concurrency)
         memory = MemoryManager()
-        
+        voice = VoiceManager()
+
         # پردازش ورودی کاربر و اجرای تسک‌ها
-        await process_user_input(task_engine, memory, args.mode)
-        
+        await process_user_input(task_engine, memory, args.mode, args.input_mode, voice)
+
     except Exception as e:
         logger.exception("Khataaye mohalek rokh daad")
         sys.exit(1)
