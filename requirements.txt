@@ -1,9 +1,14 @@
-
 # Core runtime
 browser-use>=0.9.1
 python-dotenv>=1.0.0
 playwright>=1.36.0
 pyfiglet>=1.0.4
+
+# Voice support (optional)
+SpeechRecognition>=3.10.0
+pyttsx3>=2.90
+pyaudio>=0.2.13; platform_system == "Windows"  # for Windows
+# For non-Windows systems, install pyaudio using system package manager
 
 # Optional (platform helpers)
 pywin32>=305; platform_system == "Windows"
