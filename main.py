@@ -31,7 +31,7 @@ colorama_init(autoreset=True) # در ویندوز، فعال کردن مدیری
 with open('banner.txt', 'r', encoding='utf-8') as file:
     banner = file.read()
 
-# logging configuration will be initialized at startup (see `setup_logging`)
+# پیکربندی ثبت وقایع در هنگام راه‌اندازی اولیه تنظیم می‌شود (به `setup_logging` مراجعه کنید)
 logger = logging.getLogger(__name__)
 
 def setup_environment() -> None:
@@ -226,7 +226,7 @@ async def main() -> None:
         # راه‌اندازی محیط
         setup_environment()
 
-        # Initialize logging after environment is prepared. Respect --debug flag
+        # مقداردهی اولیه گزارش‌گیری پس از آماده‌سازی محیط. با توجه به پرچم --debug
         setup_logging(level=logging.DEBUG if args.debug else None)
         install_exception_hook()
 

@@ -1,9 +1,11 @@
 # SPDX-License-Identifier: NOASSERTION
-"""Centralized logging configuration for Sofware-AI.
+# Copyright (c) 2025 Shahin
 
-This module exposes `setup_logging()` which configures a console handler
-and a rotating file handler (data/logs/app.log). It also installs an
-exception hook so uncaught exceptions are logged.
+"""تنظیمات متمرکز لاگ‌گیری برای Sofware-AI
+
+این ماژول تابع setup_logging() رو ارائه می‌کنه که یه handler برای نمایش لاگ‌ها تو کنسول
+و یه handler چرخشی برای فایل (data/logs/app.log) تنظیم می‌کنه.
+همچنین یه هوک استثنا نصب می‌کنه تا خطاهای گرفته‌نشده هم لاگ بشن.
 """
 from __future__ import annotations
 
@@ -23,11 +25,12 @@ def ensure_logs_dir(path: Path) -> None:
 
 
 def setup_logging(log_file: Optional[str] = None, level: Optional[int] = None) -> None:
-    """Configure root logger.
+    """تنظیم لاگر اصلی برنامه
 
-    - RotatingFileHandler -> data/logs/app.log (5 MB, 5 backups)
-    - StreamHandler -> stdout
-    - Level comes from `level` arg, otherwise from env LOG_LEVEL or INFO
+    - RotatingFileHandler -> فایل data/logs/app.log (حداکثر ۵ مگابایت، ۵ فایل بک‌آپ)
+    - StreamHandler -> نمایش لاگ‌ها توی کنسول (stdout)
+    - سطح لاگ‌گیری از آرگومان level میاد، اگر نبود از متغیر محیطی LOG_LEVEL 
+      و اگر اونم نبود، پیش‌فرض INFO می‌شه
     """
     log_path = Path(log_file) if log_file else DEFAULT_LOG_FILE
     ensure_logs_dir(log_path)
@@ -44,7 +47,7 @@ def setup_logging(log_file: Optional[str] = None, level: Optional[int] = None) -
             level = logging.INFO
 
     root = logging.getLogger()
-    # Ensure level is a valid logging level (int or str name)
+    # اطمینان از اینکه level یک سطح معتبر لاگ‌گیری باشه (عدد یا اسم رشته‌ای)
     lvl = level
     if not isinstance(lvl, int):
         try:
@@ -53,7 +56,7 @@ def setup_logging(log_file: Optional[str] = None, level: Optional[int] = None) -
             lvl = getattr(logging, str(lvl).upper(), logging.INFO)
     root.setLevel(lvl)
 
-    # Remove any existing handlers to avoid duplicate logs on reinit
+    # حذف تمام handler های قبلی تا هنگام راه‌اندازی مجدد، لاگ‌ها دوبار ثبت نشن 
     for h in list(root.handlers):
         root.removeHandler(h)
 
@@ -61,13 +64,13 @@ def setup_logging(log_file: Optional[str] = None, level: Optional[int] = None) -
         "%(asctime)s | %(levelname)-7s | %(name)s:%(lineno)d | %(message)s"
     )
 
-    # Console handler
+    # کنترل کننده کنسول
     ch = logging.StreamHandler(sys.stdout)
     ch.setLevel(lvl)
     ch.setFormatter(formatter)
     root.addHandler(ch)
 
-    # Rotating file handler
+    # گرداننده فایل چرخشی
     fh = logging.handlers.RotatingFileHandler(
         filename=str(log_path), maxBytes=5 * 1024 * 1024, backupCount=5, encoding="utf-8"
     )
@@ -77,11 +80,11 @@ def setup_logging(log_file: Optional[str] = None, level: Optional[int] = None) -
 
 
 def install_exception_hook() -> None:
-    """Install sys.excepthook to log unhandled exceptions."""
+    """برای ثبت استثنائات مدیریت نشده، sys.excepthook را نصب کنید."""
 
     def handle_exception(exc_type, exc_value, exc_traceback):
         if issubclass(exc_type, KeyboardInterrupt):
-            # let KeyboardInterrupt go through to allow clean exits
+            # اجازه دهید KeyboardInterrupt عبور کند تا امکان خروج تمیز فراهم شود
             sys.__excepthook__(exc_type, exc_value, exc_traceback)
             return
         logging.getLogger().exception("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
