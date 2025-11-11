@@ -11,6 +11,7 @@ import queue
 import threading
 import logging
 import tempfile
+import subprocess
 from typing import Optional, Callable, Any, cast, Literal
 import speech_recognition as sr
 from google.cloud import texttospeech
@@ -161,6 +162,8 @@ class VoiceOutput:
         temp_mp3 = os.path.join(self.temp_dir, "temp_gtts.mp3")
         try:
             # ایجاد و ذخیره فایل صوتی gTTS
+            # gTTS کدهای زبان مختلفی را پشتیبانی می‌کند
+            # برای فارسی از 'fa' استفاده می‌کنیم
             tts = gTTS(text=text, lang='fa', slow=False)
             tts.save(temp_mp3)
             
@@ -169,6 +172,18 @@ class VoiceOutput:
                 audio_bytes = f.read()
             
             return audio_bytes
+        except Exception as e:
+            # اگر زبان فارسی کار نکرد، سعی کنیم با انگلیسی
+            logger.warning(f"خطا در gTTS برای فارسی: {str(e)}")
+            try:
+                tts = gTTS(text=text, lang='en', slow=False)
+                tts.save(temp_mp3)
+                with open(temp_mp3, 'rb') as f:
+                    audio_bytes = f.read()
+                return audio_bytes
+            except Exception as fallback_error:
+                logger.error(f"خطا در gTTS حتی برای انگلیسی: {str(fallback_error)}")
+                raise
         finally:
             # پاک‌سازی فایل موقت
             if os.path.exists(temp_mp3):
@@ -189,38 +204,47 @@ class VoiceOutput:
             return self._synthesize_speech_gtts(text)
 
     def _play_audio(self, audio_content: bytes, is_mp3: bool = False) -> None:
-        """پخش صدا با استفاده از sounddevice
+        """پخش صدا با استفاده از sounddevice و ffplay
         
         Args:
             audio_content: داده‌های صوتی به صورت bytes
             is_mp3: آیا فرمت صوتی MP3 است (برای gTTS)
         """
         if is_mp3:
-            # برای gTTS که MP3 است، استفاده از pydub برای تبدیل به WAV
-            
-            temp_wav = os.path.join(self.temp_dir, "temp_audio.wav")
+            # برای gTTS که MP3 است
+            temp_mp3 = os.path.join(self.temp_dir, "temp_audio.mp3")
             try:
-                # تبدیل MP3 به WAV
-                audio = AudioSegment.from_mp3(io.BytesIO(audio_content))
-                audio.export(temp_wav, format="wav")
+                # ذخیره MP3
+                with open(temp_mp3, 'wb') as f:
+                    f.write(audio_content)
                 
-                # خواندن و پخش فایل WAV
-                data, samplerate = sf.read(temp_wav)
-                sd.play(data, samplerate)
-                sd.wait()
+                # تلاش برای پخش MP3 با ffplay
+                try:
+                    import subprocess
+                    subprocess.run(["ffplay", "-nodisp", "-autoexit", temp_mp3], 
+                                 check=True, 
+                                 stdout=subprocess.DEVNULL, 
+                                 stderr=subprocess.DEVNULL,
+                                 timeout=30)
+                except Exception as play_error:
+                    logger.warning(f"ffplay موجود نیست یا کار نکرد: {str(play_error)}")
+                    logger.info("برای پخش صحیح ffmpeg را نصب کنید: choco install ffmpeg")
             finally:
-                if os.path.exists(temp_wav):
-                    os.remove(temp_wav)
+                if os.path.exists(temp_mp3):
+                    os.remove(temp_mp3)
         else:
             # برای Google Cloud که WAV است
             temp_wav = os.path.join(self.temp_dir, "temp_speech.wav")
             with open(temp_wav, "wb") as f:
                 f.write(audio_content)
             
-            data, samplerate = sf.read(temp_wav)
-            sd.play(data, samplerate)
-            sd.wait()
-            os.remove(temp_wav)
+            try:
+                data, samplerate = sf.read(temp_wav)
+                sd.play(data, samplerate)
+                sd.wait()
+            finally:
+                if os.path.exists(temp_wav):
+                    os.remove(temp_wav)
 
     def _start_speaker_thread(self) -> None:
         """راه‌اندازی thread مدیریت صف گفتار"""
