@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: NOASSERTION
 # Copyright (c) 2025 Shahin
 
-"""
-Voice Input/Output module for Sofware-AI
-This module is responsible for speech-to-text and text-to-speech conversion.
+"""Voice I/O module for Sofware-AI.
+
+This module handles speech-to-text and text-to-speech functionality.
 """
 
 import os
@@ -11,18 +11,21 @@ import queue
 import threading
 import logging
 import tempfile
-from typing import Optional, Callable, Any, cast
+from typing import Optional, Callable, Any, cast, Literal
 import speech_recognition as sr
 from google.cloud import texttospeech
+from gtts import gTTS
 import sounddevice as sd
 import soundfile as sf
+from pydub import AudioSegment
+import io
 
 logger = logging.getLogger(__name__)
 
-class VoiceInput: 
-    """Voice Input Management Class (Speech-to-Text conversion)"""
+class VoiceInput:
+    """Manages voice input (speech-to-text)."""
     def __init__(self) -> None:
-        """Initialize speech recognition"""
+        """Initialize speech recognizer and microphone."""
         self.recognizer = sr.Recognizer()
         self.microphone = sr.Microphone()
         self.stop_listening: Optional[Callable[[], None]] = None
@@ -32,49 +35,49 @@ class VoiceInput:
         self._setup_recognition()
 
     def _setup_recognition(self) -> None:
-        """Set up voice recognition parameters and remove ambient noise"""
+        """Configure speech recognizer and reduce ambient noise."""
         with self.microphone as source:
             self.recognizer.adjust_for_ambient_noise(source, duration=1)
-            # Set voice detection sensitivity
+            # تنظیم حساسیت تشخیص صدا
             self.recognizer.energy_threshold = 4000
             self.recognizer.dynamic_energy_threshold = True
 
     def listen_once(self, timeout: Optional[int] = None) -> str:
-        """Listen once and convert speech to text
-        
+        """Listen once and convert speech to text.
+
         Args:
-            timeout: Wait time in seconds (None for unlimited)
-            
+            timeout: timeout in seconds (None for unlimited)
+
         Returns:
-            Recognized text or empty string in case of error
+            recognized text, or empty string on error
         """
         try:
             with self.microphone as source:
-                logger.info("Listening...")
+                logger.info("Listening for speech...")
                 audio = self.recognizer.listen(source, timeout=timeout)
 
             text = cast(Any, self.recognizer).recognize_google(audio, language="fa-IR")
-            logger.info(f"Recognized: {text}")
+            logger.info(f"Recognized speech: {text}")
             return text
         except sr.WaitTimeoutError:
-            logger.warning("Wait time has expired.")
+            logger.warning("Listen timed out.")
             return ""
         except sr.UnknownValueError:
-            logger.error("Could not recognize the speech.")
+            logger.error("Could not understand audio.")
             return ""
         except sr.RequestError as e:
-            logger.error(f"Recognition service error: {str(e)}")
+            logger.error(f"Speech recognition service error: {str(e)}")
             return ""
         except Exception as e:
-            logger.error(f"Unexpected error: {str(e)}")
+            logger.error(f"Unexpected error during listening: {str(e)}")
             
         return ""
         
     def start_continuous(self, callback: Callable[[str], Any]) -> None:
-        """Start continuous listening in a separate thread
-        
+        """Start continuous listening in a background thread.
+
         Args:
-            callback: Function to be called with the recognized text
+            callback: function called with recognized text
         """
         def listener_thread():
             while self.is_listening:
@@ -86,37 +89,57 @@ class VoiceInput:
         threading.Thread(target=listener_thread, daemon=True).start()
 
     def stop_continuous(self) -> None:
-        """Stop continuous listening"""
+        """Stop continuous listening."""
         self.is_listening = False
 
 class VoiceOutput:
-    """Voice Output Management Class (Text-to-Speech using Google Cloud)"""
-    def __init__(self) -> None:
-        """Initialize text-to-speech engine"""
-        self.client = texttospeech.TextToSpeechClient()
-        self.voice = texttospeech.VoiceSelectionParams(
-            language_code="fa-IR",
-            name="fa-IR-Standard-A"
-        )
-        self.audio_config = texttospeech.AudioConfig(
-            audio_encoding=texttospeech.AudioEncoding.LINEAR16,
-            speaking_rate=1.0,
-            pitch=0.0,
-            volume_gain_db=0.0
-        )
+    """Manages text-to-speech output.
+
+    Supports two TTS providers:
+    - Google Cloud TTS (google-cloud): higher quality, paid
+    - gTTS (gtts): free, reasonable quality
+    """
+    
+    def __init__(self, tts_provider: Literal["google-cloud", "gtts"] = "google-cloud") -> None:
+        """Initialize the TTS engine.
+
+        Args:
+            tts_provider: which TTS backend to use
+                - "google-cloud": Google Cloud Text-to-Speech (requires credentials)
+                - "gtts": gTTS (free)
+        """
+        self.tts_provider = tts_provider
         self.speaking_queue = queue.Queue()
         self.is_speaking = False
         self.temp_dir = tempfile.mkdtemp()
+        
+    # initialize Google Cloud service (if used)
+        if self.tts_provider == "google-cloud":
+            self.client = texttospeech.TextToSpeechClient()
+            self.voice = texttospeech.VoiceSelectionParams(
+                language_code="fa-IR",
+                name="fa-IR-Standard-A"
+            )
+            self.audio_config = texttospeech.AudioConfig(
+                audio_encoding=texttospeech.AudioEncoding.LINEAR16,
+                speaking_rate=1.0,
+                pitch=0.0,
+                volume_gain_db=0.0
+            )
+            logger.info("TTS Provider: Google Cloud Text-to-Speech")
+        else:
+            logger.info("TTS Provider: gTTS (free)")
+        
         self._start_speaker_thread()
 
-    def _synthesize_speech(self, text: str) -> bytes:
+    def _synthesize_speech_google_cloud(self, text: str) -> bytes:
         """Synthesize speech using Google Cloud TTS.
 
         Args:
-            text: The text to convert to speech
+            text: text to synthesize
 
         Returns:
-            Audio data as bytes
+            raw audio bytes
         """
         synthesis_input = texttospeech.SynthesisInput(text=text)
         response = self.client.synthesize_speech(
@@ -126,33 +149,96 @@ class VoiceOutput:
         )
         return response.audio_content
 
-    def _play_audio(self, audio_content: bytes) -> None:
+    def _synthesize_speech_gtts(self, text: str) -> bytes:
+        """Synthesize speech using gTTS.
+
+        Args:
+            text: text to synthesize
+
+        Returns:
+            raw audio bytes
+        """
+        temp_mp3 = os.path.join(self.temp_dir, "temp_gtts.mp3")
+        try:
+            # create and save gTTS audio file
+            tts = gTTS(text=text, lang='fa', slow=False)
+            tts.save(temp_mp3)
+            
+            # read MP3 file and return bytes
+            with open(temp_mp3, 'rb') as f:
+                audio_bytes = f.read()
+            
+            return audio_bytes
+        finally:
+            # cleanup temporary file
+            if os.path.exists(temp_mp3):
+                os.remove(temp_mp3)
+
+    def _synthesize_speech(self, text: str) -> bytes:
+        """Synthesize speech using the selected provider.
+
+        Args:
+            text: text to synthesize
+
+        Returns:
+            raw audio bytes
+        """
+        if self.tts_provider == "google-cloud":
+            return self._synthesize_speech_google_cloud(text)
+        else:
+            return self._synthesize_speech_gtts(text)
+
+    def _play_audio(self, audio_content: bytes, is_mp3: bool = False) -> None:
         """Play audio using sounddevice.
 
         Args:
-            audio_content: Audio data as bytes
+            audio_content: raw audio bytes
+            is_mp3: whether the content is MP3 (used by gTTS)
         """
-        temp_file = os.path.join(self.temp_dir, "temp_speech.wav")
-        with open(temp_file, "wb") as f:
-            f.write(audio_content)
-        
-        data, samplerate = sf.read(temp_file)
-        sd.play(data, samplerate)
-        sd.wait()
-        os.remove(temp_file)
+        if is_mp3:
+            # For gTTS (MP3), use pydub to convert to WAV
+            
+            temp_wav = os.path.join(self.temp_dir, "temp_audio.wav")
+            try:
+                # convert MP3 to WAV
+                audio = AudioSegment.from_mp3(io.BytesIO(audio_content))
+                audio.export(temp_wav, format="wav")
+                
+                # read and play WAV file
+                data, samplerate = sf.read(temp_wav)
+                sd.play(data, samplerate)
+                sd.wait()
+            finally:
+                if os.path.exists(temp_wav):
+                    os.remove(temp_wav)
+        else:
+            # For Google Cloud which returns WAV
+            temp_wav = os.path.join(self.temp_dir, "temp_speech.wav")
+            with open(temp_wav, "wb") as f:
+                f.write(audio_content)
+            
+            data, samplerate = sf.read(temp_wav)
+            sd.play(data, samplerate)
+            sd.wait()
+            os.remove(temp_wav)
+
     def _start_speaker_thread(self) -> None:
-        """Start the speaker queue management thread"""
+        """Start the background thread that manages the speaking queue."""
         def speaker_thread():
             while True:
                 try:
                     text = self.speaking_queue.get()
                     if text is None:  # stop signal
                         break
+                    
                     self.is_speaking = True
                     audio_content = self._synthesize_speech(text)
-                    self._play_audio(audio_content)
+
+                    # determine audio format based on provider
+                    is_mp3 = self.tts_provider == "gtts"
+                    self._play_audio(audio_content, is_mp3=is_mp3)
                 except Exception as e:
-                    logger.error(f"Error while playing speech: {str(e)}")
+                    logger.error(f"Error playing speech: {str(e)}")
                 finally:
                     self.is_speaking = False
                     self.speaking_queue.task_done()
@@ -161,76 +247,81 @@ class VoiceOutput:
         self.speaker_thread.start()
 
     def speak(self, text: str, block: bool = False) -> None:
-        """Convert text to speech.
+        """Enqueue text to be spoken.
 
         Args:
-            text: The text to convert to speech
-            block: If True, wait for the speech to finish
+            text: text to speak
+            block: if True, wait until speaking finishes
         """
         try:
             self.speaking_queue.put(text)
             if block:
                 self.speaking_queue.join()
         except Exception as e:
-            logger.error(f"Error adding text to speech queue: {str(e)}")
+            logger.error(f"Error adding text to speaking queue: {str(e)}")
 
     def stop_speaking(self) -> None:
-        """Immediately stop current speech and clear the queue"""
+        """Immediately stop current speech and clear the queue."""
         with self.speaking_queue.mutex:
             self.speaking_queue.queue.clear()
 
     def shutdown(self) -> None:
-        """Shutdown the text-to-speech engine"""
+        """Shut down the TTS engine."""
         try:
             self.speaking_queue.put(None)  # send stop signal
             self.speaker_thread.join()
             if os.path.exists(self.temp_dir):
                 os.rmdir(self.temp_dir)
         except Exception as e:
-            logger.error(f"Error while shutting down TTS engine: {str(e)}")
+            logger.error(f"Error shutting down TTS engine: {str(e)}")
 
 class VoiceManager:
-    """Unified manager for voice input and output"""
+    """Unified manager for voice input and output."""
 
-    def __init__(self) -> None:
-        """Initialize the voice manager"""
-        self.voice_input = VoiceInput()
-        self.voice_output = VoiceOutput()
-
-    def listen(self, timeout: Optional[int] = None) -> str:
-        """Listen once to voice input.
+    def __init__(self, tts_provider: Literal["google-cloud", "gtts"] = "google-cloud") -> None:
+        """Initialize the voice manager.
 
         Args:
-            timeout: Wait time in seconds
+            tts_provider: which TTS backend to use
+                - "google-cloud": Google Cloud Text-to-Speech
+                - "gtts": gTTS (free)
+        """
+        self.voice_input = VoiceInput()
+        self.voice_output = VoiceOutput(tts_provider=tts_provider)
+
+    def listen(self, timeout: Optional[int] = None) -> str:
+        """Perform a single listen on voice input.
+
+        Args:
+            timeout: timeout in seconds
 
         Returns:
-            Recognized text
+            recognized text
         """
         return self.voice_input.listen_once(timeout)
     
     def speak(self, text: str, block: bool = False) -> None:
-        """Convert text to speech.
-
+        """Convert text to speech and speak it.
         Args:
-            text: The text to convert to speech
-            block: If True, wait for the speech to finish
+            text: text to speak
+            block: if True, wait until speaking finishes
         """
         self.voice_output.speak(text, block)
 
     def start_conversation(self, callback: Callable[[str], Any]) -> None:
-        """Start a two-way conversation.
+        """Start two-way conversation (continuous listen with callback).
 
         Args:
-            callback: Function that will be called with the recognized text
+            callback: function called with recognized text
         """
         self.voice_input.start_continuous(callback)
 
     def stop_conversation(self) -> None:
-        """Stop the two-way conversation"""
+        """Stop two-way conversation"""
         self.voice_input.stop_continuous()
         self.voice_output.stop_speaking()
 
     def shutdown(self) -> None:
-        """Cleanly shutdown the voice system"""
+        """Cleanly shutdown the voice system."""
         self.stop_conversation()
         self.voice_output.shutdown()

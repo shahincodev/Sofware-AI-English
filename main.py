@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: NOASSERTION
-# Copyright (c) 2025 TahaNili (Shahin)
+# Copyright (c) 2025 Shahin
 
-"""
-Main entry point for the Sofware-AI system.
-This module provides a command-line interface (CLI) to interact with the core capabilities.
+"""Main entry point for the Sofware-AI application.
+
+This module provides a simple CLI to interact with the core system features.
 """
 
 from __future__ import annotations
@@ -25,33 +25,26 @@ from core.memory_system import MemoryManager
 from core.task_engine import TaskEngine
 from core.voice_io import VoiceManager
 from dotenv import load_dotenv
+from core.logging_config import setup_logging, install_exception_hook
 
-colorama_init(autoreset=True) # enable ANSI handling on Windows
+colorama_init(autoreset=True) # On Windows, enable ANSI handling
 with open('banner.txt', 'r', encoding='utf-8') as file:
     banner = file.read()
 
-# Logging configuration
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler(Path("data/logs/app.log"))
-    ]
-)
+# Configure logging during initial setup (see setup_logging() below)
 logger = logging.getLogger(__name__)
 
 def setup_environment() -> None:
     """Initialize environment variables and create required directories."""
-    # Load environment variables from .env file
+    # load environment variables from .env file
     load_dotenv()
     
-    # Ensure required directories exist
+    # ensure required directories exist
     for dir_path in ["data/logs", "data/logs/cache"]:
         Path(dir_path).mkdir(parents=True, exist_ok=True)
 
 def parse_arguments() -> argparse.Namespace:
-    """Parse command line arguments."""
+    """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
         description="Sofware-AI — intelligent task processing system",
         formatter_class=argparse.RawDescriptionHelpFormatter
@@ -61,7 +54,7 @@ def parse_arguments() -> argparse.Namespace:
         "--mode",
         choices=["browser", "code"],
         default="browser",
-        help="Operation mode: 'browser' for web interaction, 'code' for code analysis"
+        help="Operation mode: 'browser' to interact with the web, 'code' to analyze code"
     )
     
     parser.add_argument(
@@ -77,10 +70,16 @@ def parse_arguments() -> argparse.Namespace:
         help="Enable debug logging"
     )
     parser.add_argument(
-    "--input-mode",
-    choices=["text", "voice"],
-    default="text",
-    help="Select input type: 'text' for keyboard, 'voice' for microphone"
+        "--input-mode",
+        choices=["text", "voice"],
+        default="text",
+        help="Input mode: 'text' for keyboard, 'voice' for microphone"
+    )
+    parser.add_argument(
+        "--tts-provider",
+        choices=["google-cloud", "gtts"],
+        default="gtts",
+        help="Select TTS provider: 'google-cloud' (paid, higher quality) or 'gtts' (free)"
     )
 
     return parser.parse_args()
@@ -90,10 +89,10 @@ def print_banner(text=banner, color=Fore.CYAN) -> None:
     term_width = shutil.get_terminal_size((80, 20)).columns
     
     try:
-        # If the input text is already ASCII art, print it directly
+        # If text is already ASCII art, display it directly
         lines = str(text).splitlines()
         for line in lines:
-            # compute padding needed to center the text
+            # Calculate padding needed to center text
             padding = (term_width - len(line)) // 2
             if padding > 0:
                 print(color + " " * padding + line + Style.RESET_ALL)
@@ -107,16 +106,16 @@ async def process_user_input(task_engine: TaskEngine, memory: MemoryManager, mod
     """Process user input in an interactive loop."""
 
     print_banner(banner, color=Fore.CYAN)
-    # voice greeting if voice input selected
+    # optional voice welcome when using voice input
     if input_mode == "voice":
         voice.speak("Hello! Welcome to the AI system.", block=True)
-    print("\nWelcome to Sofware-AI — Intelligent Task Processor!\n")
-    print("Enter your tasks (one task per line). Use Ctrl+C to exit.\n")
+    print("\nWelcome to Sofware-AI!")
+    print("Enter your tasks (one per line). Press Ctrl+C to exit.\n")
 
     try:
-        # outer loop: allows multiple rounds of adding + executing tasks
+        # Outer loop: allows multiple rounds of adding + executing tasks
         while True:
-            # inner loop: collect one or more tasks from the user
+            # Inner loop: collect one or more tasks from the user
             while True:
                 try:
 
@@ -130,28 +129,28 @@ async def process_user_input(task_engine: TaskEngine, memory: MemoryManager, mod
                         if not user_input:
                             continue
 
-                    # store task in short-term memory
+                    # remember the task in short-term memory
                     memory.remember_short(
                         content=user_input,
                         ttl=3600,  # 1 hour TTL
                         metadata={"type": "user_task", "mode": mode}
                     )
 
-                    # add task to processing engine
+                    # add task to the processing engine
                     task_engine.add_task(user_input, mode=mode)
                     print(f"Task added: {user_input}")
 
-                    # ask whether to add more tasks or start execution
+                    # Ask whether to add more tasks or start execution
 
                     if input_mode == "voice":
-                        voice.speak("Do you have another task? Say 'yes' to add another, or stay silent to continue.")
+                        voice.speak("Do you have another task? Say 'yes' to add another task, or stay silent to continue.")
                         choice = voice.listen(timeout=5)
-                        if choice and ("yes" in choice.lower()):
+                        if choice and ("yes" in choice.lower() or "بale" in choice.lower()):
                             continue
                         else:
                             break
                     else:
-                        choice = input("\nAdd another task? (y/N) ").strip().lower()
+                        choice = input("\nDo you have another task? (y/N) ").strip().lower()
                         if choice == 'y':
                             continue
                         else:
@@ -160,30 +159,29 @@ async def process_user_input(task_engine: TaskEngine, memory: MemoryManager, mod
                 except EOFError:
                     break
 
-            # If no task was added in this round, ask whether to continue or exit
-
+            # If no task was added this round, ask whether to continue or exit
             if not task_engine.queue:
                 if input_mode == "voice":
-                    voice.speak("No tasks were added. Do you want to continue? Say 'no' to exit.")
+                    voice.speak("No tasks have been added. Do you want to continue? Say 'no' to exit.")
                     cont = voice.listen(timeout=5)
-                    if cont and ("no" in cont.lower()):
+                    if cont and ("no" in cont.lower() or "na" in cont.lower()):
                         break
                     else:
                         continue
                 else:
-                    cont = input("\nNo tasks were added. Do you want to continue? (Y/n) ").strip().lower()
+                    cont = input("\nNo tasks added. Continue? (Y/n) ").strip().lower()
                     if cont == 'n':
                         break
                     else:
                         continue
 
-            # Execute all collected tasks
+            # Execute collected tasks
             print("\nExecuting collected tasks...")
 
-            # Snapshot the tasks before execution because run_all does not clear the queue
+            # Snapshot tasks before execution because run_all clears the queue
             tasks_list = list(task_engine.queue)
             results = await task_engine.run_all()
-
+ 
             # Store results in long-term memory
             for (task_text, task_mode), result in zip(tasks_list, results):
                 if result:
@@ -197,23 +195,22 @@ async def process_user_input(task_engine: TaskEngine, memory: MemoryManager, mod
                     )
                     print(f"\nTask result: {result}\n")
                 else:
-                    print(f"\nTask failed or produced no result.\n")
+                    print(f"\nTask failed or produced no result\n")
 
-            # Clear the engine queue to start the next round fresh
+            # Clear the engine queue to start fresh next round
             task_engine.queue.clear()
 
-            # Ask whether the user wants to add more tasks or finish
+            # Ask whether user wants to add more tasks or execute them
 
-            # Ask whether the user wants to add more tasks or finish
             if input_mode == "voice":
-                voice.speak("Would you like to add more tasks or continue? Say 'no' to finish.")
+                voice.speak("Do you want to add more tasks or execute them? Say 'no' to exit.")
                 cont = voice.listen(timeout=5)
-                if cont and ("no" in cont.lower()):
+                if cont and ("no" in cont.lower() or "na" in cont.lower()):
                     break
                 else:
                     continue
             else:
-                cont = input("\nWould you like to add more tasks or continue? (Y/n) ").strip().lower()
+                cont = input("\nAdd more tasks or execute? (Y/n) ").strip().lower()
                 if cont == 'n':
                     break
                 else:
@@ -228,25 +225,26 @@ async def process_user_input(task_engine: TaskEngine, memory: MemoryManager, mod
 async def main() -> None:
     """Main program entry point."""
     try:
-    # Parse command line arguments
+        # Parse command-line arguments
         args = parse_arguments()
 
-    # Setup environment
+        # Initialize environment
         setup_environment()
 
-        if args.debug:
-            logging.getLogger().setLevel(logging.DEBUG)
+        # Initialize logging after environment setup. Respect --debug flag
+        setup_logging(level=logging.DEBUG if args.debug else None)
+        install_exception_hook()
 
-    # Initialize core components
+        # Initialize core components
         task_engine = TaskEngine(concurrency=args.concurrency)
         memory = MemoryManager()
-        voice = VoiceManager()
+        voice = VoiceManager(tts_provider=args.tts_provider)
 
-    # Process user input and execute tasks
+        # Process user input and execute tasks
         await process_user_input(task_engine, memory, args.mode, args.input_mode, voice)
 
     except Exception as e:
-        logger.exception("Unhandled fatal error occurred")
+        logger.exception("A fatal error occurred")
         sys.exit(1)
 
 if __name__ == "__main__":
