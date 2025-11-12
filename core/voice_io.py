@@ -162,28 +162,15 @@ class VoiceOutput:
         temp_mp3 = os.path.join(self.temp_dir, "temp_gtts.mp3")
         try:
             # ایجاد و ذخیره فایل صوتی gTTS
-            # gTTS کدهای زبان مختلفی را پشتیبانی می‌کند
-            # برای فارسی از 'fa' استفاده می‌کنیم
-            tts = gTTS(text=text, lang='fa', slow=False)
+            # gTTS پشتیبانی فارسی قابل اعتمادی ندارد، بنابراین خروجی به انگلیسی تولید می‌شود
+            tts = gTTS(text=text, lang='en', slow=False)
             tts.save(temp_mp3)
-            
+
             # خواندن فایل MP3 و تبدیل به bytes
             with open(temp_mp3, 'rb') as f:
                 audio_bytes = f.read()
-            
+
             return audio_bytes
-        except Exception as e:
-            # اگر زبان فارسی کار نکرد، سعی کنیم با انگلیسی
-            logger.warning(f"khata dar gTTS baraye farsi: {str(e)}")
-            try:
-                tts = gTTS(text=text, lang='en', slow=False)
-                tts.save(temp_mp3)
-                with open(temp_mp3, 'rb') as f:
-                    audio_bytes = f.read()
-                return audio_bytes
-            except Exception as fallback_error:
-                logger.error(f"khata dar gTTS hati baraye english: {str(fallback_error)}")
-                raise
         finally:
             # پاک‌سازی فایل موقت
             if os.path.exists(temp_mp3):
