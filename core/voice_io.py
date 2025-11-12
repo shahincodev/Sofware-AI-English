@@ -11,6 +11,7 @@ import queue
 import threading
 import logging
 import tempfile
+import subprocess
 from typing import Optional, Callable, Any, cast, Literal
 import speech_recognition as sr
 from google.cloud import texttospeech
@@ -38,18 +39,18 @@ class VoiceInput:
         """Configure speech recognizer and reduce ambient noise."""
         with self.microphone as source:
             self.recognizer.adjust_for_ambient_noise(source, duration=1)
-            # تنظیم حساسیت تشخیص صدا
+            # Set speech recognition sensitivity
             self.recognizer.energy_threshold = 4000
             self.recognizer.dynamic_energy_threshold = True
 
     def listen_once(self, timeout: Optional[int] = None) -> str:
         """Listen once and convert speech to text.
-
+        
         Args:
             timeout: timeout in seconds (None for unlimited)
-
+            
         Returns:
-            recognized text, or empty string on error
+            recognized text or empty string on error
         """
         try:
             with self.microphone as source:
@@ -75,7 +76,7 @@ class VoiceInput:
         
     def start_continuous(self, callback: Callable[[str], Any]) -> None:
         """Start continuous listening in a background thread.
-
+        
         Args:
             callback: function called with recognized text
         """
@@ -102,7 +103,7 @@ class VoiceOutput:
     
     def __init__(self, tts_provider: Literal["google-cloud", "gtts"] = "google-cloud") -> None:
         """Initialize the TTS engine.
-
+        
         Args:
             tts_provider: which TTS backend to use
                 - "google-cloud": Google Cloud Text-to-Speech (requires credentials)
@@ -113,7 +114,7 @@ class VoiceOutput:
         self.is_speaking = False
         self.temp_dir = tempfile.mkdtemp()
         
-    # initialize Google Cloud service (if used)
+        # Initialize Google Cloud service (if used)
         if self.tts_provider == "google-cloud":
             self.client = texttospeech.TextToSpeechClient()
             self.voice = texttospeech.VoiceSelectionParams(
@@ -134,10 +135,10 @@ class VoiceOutput:
 
     def _synthesize_speech_google_cloud(self, text: str) -> bytes:
         """Synthesize speech using Google Cloud TTS.
-
+        
         Args:
             text: text to synthesize
-
+            
         Returns:
             raw audio bytes
         """
@@ -151,35 +152,36 @@ class VoiceOutput:
 
     def _synthesize_speech_gtts(self, text: str) -> bytes:
         """Synthesize speech using gTTS.
-
+        
         Args:
             text: text to synthesize
-
+            
         Returns:
             raw audio bytes
         """
         temp_mp3 = os.path.join(self.temp_dir, "temp_gtts.mp3")
         try:
-            # create and save gTTS audio file
-            tts = gTTS(text=text, lang='fa', slow=False)
+            # Create and save gTTS audio file
+            # Note: gTTS does not support Persian reliably, so output is in English
+            tts = gTTS(text=text, lang='en', slow=False)
             tts.save(temp_mp3)
-            
-            # read MP3 file and return bytes
+
+            # Read MP3 file and return bytes
             with open(temp_mp3, 'rb') as f:
                 audio_bytes = f.read()
-            
+
             return audio_bytes
         finally:
-            # cleanup temporary file
+            # Clean up temporary file
             if os.path.exists(temp_mp3):
                 os.remove(temp_mp3)
 
     def _synthesize_speech(self, text: str) -> bytes:
         """Synthesize speech using the selected provider.
-
+        
         Args:
             text: text to synthesize
-
+            
         Returns:
             raw audio bytes
         """
@@ -189,38 +191,47 @@ class VoiceOutput:
             return self._synthesize_speech_gtts(text)
 
     def _play_audio(self, audio_content: bytes, is_mp3: bool = False) -> None:
-        """Play audio using sounddevice.
-
+        """Play audio using sounddevice and ffplay.
+        
         Args:
             audio_content: raw audio bytes
             is_mp3: whether the content is MP3 (used by gTTS)
         """
         if is_mp3:
-            # For gTTS (MP3), use pydub to convert to WAV
-            
-            temp_wav = os.path.join(self.temp_dir, "temp_audio.wav")
+            # For gTTS which returns MP3
+            temp_mp3 = os.path.join(self.temp_dir, "temp_audio.mp3")
             try:
-                # convert MP3 to WAV
-                audio = AudioSegment.from_mp3(io.BytesIO(audio_content))
-                audio.export(temp_wav, format="wav")
+                # Save MP3
+                with open(temp_mp3, 'wb') as f:
+                    f.write(audio_content)
                 
-                # read and play WAV file
-                data, samplerate = sf.read(temp_wav)
-                sd.play(data, samplerate)
-                sd.wait()
+                # Try to play MP3 with ffplay
+                try:
+                    import subprocess
+                    subprocess.run(["ffplay", "-nodisp", "-autoexit", temp_mp3], 
+                                 check=True, 
+                                 stdout=subprocess.DEVNULL, 
+                                 stderr=subprocess.DEVNULL,
+                                 timeout=30)
+                except Exception as play_error:
+                    logger.warning(f"ffplay not available or failed:\n{str(play_error)}")
+                    logger.info("To play audio correctly, install ffmpeg: choco install ffmpeg")
             finally:
-                if os.path.exists(temp_wav):
-                    os.remove(temp_wav)
+                if os.path.exists(temp_mp3):
+                    os.remove(temp_mp3)
         else:
             # For Google Cloud which returns WAV
             temp_wav = os.path.join(self.temp_dir, "temp_speech.wav")
             with open(temp_wav, "wb") as f:
                 f.write(audio_content)
             
-            data, samplerate = sf.read(temp_wav)
-            sd.play(data, samplerate)
-            sd.wait()
-            os.remove(temp_wav)
+            try:
+                data, samplerate = sf.read(temp_wav)
+                sd.play(data, samplerate)
+                sd.wait()
+            finally:
+                if os.path.exists(temp_wav):
+                    os.remove(temp_wav)
 
     def _start_speaker_thread(self) -> None:
         """Start the background thread that manages the speaking queue."""
@@ -233,12 +244,12 @@ class VoiceOutput:
                     
                     self.is_speaking = True
                     audio_content = self._synthesize_speech(text)
-
-                    # determine audio format based on provider
+                    
+                    # Determine audio format based on provider
                     is_mp3 = self.tts_provider == "gtts"
                     self._play_audio(audio_content, is_mp3=is_mp3)
                 except Exception as e:
-                    logger.error(f"Error playing speech: {str(e)}")
+                    logger.error(f"Error playing speech:\n{str(e)}")
                 finally:
                     self.is_speaking = False
                     self.speaking_queue.task_done()
@@ -248,7 +259,7 @@ class VoiceOutput:
 
     def speak(self, text: str, block: bool = False) -> None:
         """Enqueue text to be spoken.
-
+        
         Args:
             text: text to speak
             block: if True, wait until speaking finishes
@@ -280,7 +291,7 @@ class VoiceManager:
 
     def __init__(self, tts_provider: Literal["google-cloud", "gtts"] = "google-cloud") -> None:
         """Initialize the voice manager.
-
+        
         Args:
             tts_provider: which TTS backend to use
                 - "google-cloud": Google Cloud Text-to-Speech
@@ -291,10 +302,10 @@ class VoiceManager:
 
     def listen(self, timeout: Optional[int] = None) -> str:
         """Perform a single listen on voice input.
-
+        
         Args:
             timeout: timeout in seconds
-
+            
         Returns:
             recognized text
         """
@@ -310,18 +321,18 @@ class VoiceManager:
 
     def start_conversation(self, callback: Callable[[str], Any]) -> None:
         """Start two-way conversation (continuous listen with callback).
-
+        
         Args:
             callback: function called with recognized text
         """
         self.voice_input.start_continuous(callback)
 
     def stop_conversation(self) -> None:
-        """Stop two-way conversation"""
+        """Stop two-way conversation."""
         self.voice_input.stop_continuous()
         self.voice_output.stop_speaking()
 
     def shutdown(self) -> None:
-        """Cleanly shutdown the voice system."""
+        """Cleanly shut down the voice system."""
         self.stop_conversation()
         self.voice_output.shutdown()

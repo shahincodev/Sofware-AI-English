@@ -42,6 +42,25 @@ def create_agent(task: str, mode: str = "browser") -> Agent | CodeAgent:
     # Allowed paths for agent (if needed, you can read settings from file or env)
     available_paths = [str(Path("./data").resolve())]
 
+    if not callable(agent_class):
+        module = agent_class
+        cls = None
+        # Give priority to well-known names
+        for name in ("CodeAgent", "Agent"):
+            cls = getattr(module, name, None)
+            if cls and callable(cls):
+                agent_class = cls
+                break
+        # If not found yet, take the first type defined in the module
+        if not callable(agent_class):
+            for attr in dir(module):
+                obj = getattr(module, attr)
+                if isinstance(obj, type):
+                    agent_class = obj
+                    break
+        if not callable(agent_class):
+            raise TypeError(f"agent_class ({module!r}) is not callable and no suitable class was found in the module")
+
     agent = agent_class(
         task=task,
         llm=llm,
