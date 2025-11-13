@@ -1,0 +1,34 @@
+name: Sync to English Repository
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Persian Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.SYNC_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "action@github.com"
+
+      - name: Add English Repository Remote
+        run: |
+          git remote add english https://x-access-token:${{ secrets.SYNC_TOKEN }}@github.com/shahincodev/Sofware-AI-English.git
+
+      - name: Push to English Repository
+        run: |
+          git push english main --force
+
+      - name: Notify on Success
+        run: |
+          echo "✅ Successfully synced to English repository!"
