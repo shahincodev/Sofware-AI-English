@@ -1,10 +1,7 @@
 name: Sync to English Repository
 
 on:
-  push:
-    branches:
-      - main
-
+  workflow_dispatch:  # Manual trigger
 jobs:
   sync:
     runs-on: ubuntu-latest
@@ -31,4 +28,4 @@ jobs:
 
       - name: Notify on Success
         run: |
-          echo "✅ Successfully synced to English repository!"
+          echo "✅ Successfully synced to English repository!" >> $GITHUB_STEP_SUMMARY
