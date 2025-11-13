@@ -108,7 +108,7 @@ async def process_user_input(task_engine: TaskEngine, memory: MemoryManager, mod
     print_banner(banner, color=Fore.CYAN)
     # optional voice welcome when using voice input
     if input_mode == "voice":
-        voice.speak("Hello! Welcome to the AI system.", block=True)
+        voice.speak("Hello! Welcome to the Artificial Intelligence System.", block=True)
     print("\nWelcome to Sofware-AI!")
     print("Enter your tasks (one per line). Press Ctrl+C to exit.\n")
 
