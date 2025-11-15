@@ -57,7 +57,7 @@ class VoiceInput:
                 logger.info("Dar hale Goosh dadan...")
                 audio = self.recognizer.listen(source, timeout=timeout)
 
-            text = cast(Any, self.recognizer).recognize_google(audio, language="fa-IR")
+            text = cast(Any, self.recognizer).recognize_google(audio)
             logger.info(f"Tashkhis Dade Shod: {text}")
             return text
         except sr.WaitTimeoutError:
